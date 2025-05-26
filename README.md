@@ -14,3 +14,4 @@ For initialization, place an accurate weight on the scale, enter the weight in t
 Adding a "pause" button to stop water checking and skipping settle can be a future idea.  
   
   
+![webpage](scaleweb.png)
