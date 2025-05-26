@@ -24,6 +24,7 @@ SOFTWARE.
 // Scale with HX711 and ESP32-C3-super mini
 
 // Build with Arduino IDE 1.8.19, ESP32 2.0.14
+// Partition: Default 4MB with ffat (use USB first, OTA doesn't create ffat partition)
 
 #include <ESPAsyncWebServer.h> // https://github.com/ESP32Async/ESPAsyncWebServer (3.7.2)
 #include <TimeLib.h> // https://github.com/PaulStoffregen/Time
@@ -505,7 +506,7 @@ void loop()
     {
       if( WiFi.smartConfigDone())
       {
-        Serial.println("SmartConfig set");
+        ets_printf("SmartConfig set\r\n");
         bConfigDone = true;
         connectTimer = now();
         WiFi.SSID().toCharArray(prefs.szSSID, sizeof(prefs.szSSID)); // Get the SSID from SmartConfig or last used
@@ -519,7 +520,7 @@ void loop()
       {
         if(!bStarted)
         {
-          Serial.println("WiFi Connected");
+          ets_printf("WiFi Connected\r\n");
           WiFi.mode(WIFI_STA);
           MDNS.begin( prefs.szName );
           MDNS.addService("sensors", "tcp", serverPort);
@@ -534,7 +535,7 @@ void loop()
       }
       else if(now() - connectTimer > 10) // failed to connect for some reason
       {
-        Serial.println("Connect failed. Starting SmartConfig");
+        ets_printf("Connect failed. Starting SmartConfig\r\n");
         connectTimer = now();
         WiFi.mode(WIFI_AP_STA);
         WiFi.beginSmartConfig();
