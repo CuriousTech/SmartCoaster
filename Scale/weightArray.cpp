@@ -12,26 +12,34 @@ const char fileName[] = "/dayTotal";
 void WeightArray::init()
 {
   FFat.begin(true);
-
-  String sName = fileName;
-  sName += year(); // Just for wear leveling
-  sName += ".bin";
-  File file = FFat.open(sName, "r");
-
-  if(!file)
-    return;
-
-  file.read((byte*)dayTotal, sizeof(dayTotal));
-  file.close();
-  flOzAccum = dayTotal[0]; // use day 0 for the current day accumulation
 }
 
 void WeightArray::saveData()
 {
+  if(year() < 2025) // time not set
+    return;
+
+  File file;
   String sName = fileName;
   sName += year();
   sName += ".bin";
-  File file = FFat.open(sName, "w");
+
+  static bool bLoaded = false; // save will be called when time changes
+  if(bLoaded == false)  // load if not done yet
+  {
+    bLoaded = true;
+    file = FFat.open(sName, "r");
+  
+    if(!file)
+      return;
+
+    file.read((byte*)dayTotal, sizeof(dayTotal));
+    file.close();
+    flOzAccum = dayTotal[0]; // use day 0 for the current day accumulation
+    return;
+  }
+
+  file = FFat.open(sName, "w");
 
   if(!file)
     return;
@@ -139,6 +147,11 @@ void WeightArray::historyDump(bool bStart, AsyncWebSocket &ws, int WsClientID)
 
 void WeightArray::sendNew(uint32_t date, int32_t Value, AsyncWebSocket &ws, int WsClientID)
 {
+  // Update lower bars
+  dayTotal[0] = flOzAccum;
+  jsonString js2("days");
+  js2.Array("days", dayTotal, 32);
+  ws.text(WsClientID, js2.Close());
 
   // Add to chart
   String out = "{\"cmd\":\"data2\",\"d\":[[";
@@ -148,10 +161,4 @@ void WeightArray::sendNew(uint32_t date, int32_t Value, AsyncWebSocket &ws, int 
   out += Value;
   out += "]]}";
   ws.text(WsClientID, out);
-
-  // Update lower bars
-  dayTotal[0] = flOzAccum;
-  jsonString js2("days");
-  js2.Array("days", dayTotal, 32);
-  ws.text(WsClientID, js2.Close());
 }
