@@ -99,11 +99,6 @@ void WeightArray::historyDump(bool bStart, AsyncWebSocket &ws, int WsClientID)
     js.Var("tb"  , m_lastDate); // date of first entry
     ws.text(WsClientID, js.Close());
 
-    dayTotal[0] = flOzAccum;
-    jsonString js2("days");
-    js2.Array("days", dayTotal, 32);
-    ws.text(WsClientID, js2.Close());
-
     if( get(aidx, 0) == false)
     {
       bSending = false;
@@ -144,12 +139,19 @@ void WeightArray::historyDump(bool bStart, AsyncWebSocket &ws, int WsClientID)
 
 void WeightArray::sendNew(uint32_t date, int32_t Value, AsyncWebSocket &ws, int WsClientID)
 {
+
+  // Add to chart
   String out = "{\"cmd\":\"data2\",\"d\":[[";
 
   out += m_lastDate;
   out += ",";
   out += Value;
-    
   out += "]]}";
   ws.text(WsClientID, out);
+
+  // Update lower bars
+  dayTotal[0] = flOzAccum;
+  jsonString js2("days");
+  js2.Array("days", dayTotal, 32);
+  ws.text(WsClientID, js2.Close());
 }
