@@ -18,8 +18,6 @@ void WeightArray::init()
   sName += ".bin";
   File file = FFat.open(sName, "r");
 
-  if(!file)
-  {
   dayTotal[19] = 1000;
   dayTotal[20] = 2800;
   dayTotal[21] = 2990;
@@ -27,8 +25,8 @@ void WeightArray::init()
   dayTotal[23] = 3400;
   dayTotal[24] = 3900;
   dayTotal[25] = 4000;
+  if(!file)
     return;
-  }
 
   file.read((byte*)dayTotal, sizeof(dayTotal));
   file.close();
@@ -108,6 +106,7 @@ void WeightArray::historyDump(bool bStart, AsyncWebSocket &ws, int WsClientID)
     js.Var("tb"  , m_lastDate); // date of first entry
     ws.text(WsClientID, js.Close());
 
+    dayTotal[0] = flOzAccum;
     jsonString js2("days");
     js2.Array("days", dayTotal, 32);
     ws.text(WsClientID, js2.Close());
