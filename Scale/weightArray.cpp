@@ -18,13 +18,6 @@ void WeightArray::init()
   sName += ".bin";
   File file = FFat.open(sName, "r");
 
-  dayTotal[19] = 1000;
-  dayTotal[20] = 2800;
-  dayTotal[21] = 2990;
-  dayTotal[22] = 4300;
-  dayTotal[23] = 3400;
-  dayTotal[24] = 3900;
-  dayTotal[25] = 4000;
   if(!file)
     return;
 
