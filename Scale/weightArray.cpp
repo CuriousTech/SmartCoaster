@@ -51,6 +51,7 @@ void WeightArray::saveData()
 
 void WeightArray::newDay(int8_t day)
 {
+  if(day == 0) return;
   dayTotal[day] = flOzAccum;
   flOzAccum = 0;
 }
