@@ -546,13 +546,16 @@ void loop()
 
     if(hour_save != hour())
     {
+      static uint8_t lastDay;
+
       hour_save = hour();
       if((hour_save&1) == 0)
         CallHost(Reason_Setup, "");
 
       if(hour_save == 0)
-        wa.newDay(day() );
+        wa.newDay(lastDay);
 
+      lastDay = day();
       wa.saveData();
       prefs.update(); // update EEPROM if needed while we're at it (give user time to make many adjustments)
       if(hour_save == 2 && WiFi.status() == WL_CONNECTED)
