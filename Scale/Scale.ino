@@ -41,6 +41,7 @@ SOFTWARE.
 #include "jsonstring.h"
 #include "uriString.h"
 #include "WeightArray.h"
+#include "Media.h"
 
 const int LOADCELL_DOUT_PIN = 8;
 const int LOADCELL_SCK_PIN = 9;
@@ -75,10 +76,11 @@ HX711 loadcell;
 bool bConfigDone = false;
 bool bStarted = false;
 uint32_t connectTimer;
-
+Media media;
 WeightArray wa;
 int32_t weight;
 int32_t flOzDiff;
+int32_t fullWt;
 
 String settingsJson()
 {
@@ -90,6 +92,9 @@ String settingsJson()
   js.Var("cal", String(prefs.fCal, 4));
   js.Var("wt", prefs.calWt);
   js.Var("empty", prefs.emptyWt);
+  js.Var("diskfree",  media.freeSpace() );
+  js.Var("sdavail", 0 );
+  js.Var("currfs", media.currFs() );
   return js.Close();
 }
 
@@ -118,6 +123,10 @@ const char *jsonList1[] = {
   "emptywt",
   "clear",
   "floz", // 10
+  "cd",
+  "delf",
+  "createdir",
+  "tzo",
   NULL
 };
 
@@ -188,6 +197,20 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       break;
     case 10: // manual adjust
       wa.flOzAccum = iValue * 10;
+      break;
+    case 11: // cd
+      media.setPath(psValue);
+      break;
+    case 12: // delf
+      media.deleteFile(psValue);
+      WsSend(settingsJson()); // update disk free
+      break;
+    case 13: // createdir
+      media.createDir(psValue);
+      WsSend(settingsJson()); // update disk free
+      break;
+   case 14: // tzo
+      if(!prefs.tzo) prefs.tzo = iValue; // trick to get TZ
       break;
   }
 }
@@ -341,6 +364,11 @@ void WsSend(String s)
   ws.textAll(s);
 }
 
+uint8_t localHour()
+{
+  return hour() - (prefs.tzo / 60);
+}
+
 void alert(String txt)
 {
   jsonString js("alert");
@@ -353,12 +381,12 @@ void getWeight()
   static bool bFirst = true;
   static int32_t warr[4];
 
-  if(bFirst && loadcell.is_ready())
+  if(bFirst && loadcell.is_ready()) // extra initial tare
   {
     bFirst = false;
     loadcell.tare();
   }
-    
+
   if (!loadcell.is_ready())
     return;
 
@@ -370,7 +398,7 @@ void getWeight()
      last = newwt;
      return;
   }
-  weight = newwt;
+  weight = last = newwt;
 
   int32_t floz = ( weight - prefs.emptyWt*10 ) / 28.35 / 0.958611418535; // grams to fluid oz
   if(floz < 0) floz = 0;
@@ -380,7 +408,7 @@ void getWeight()
 
   bool bFix = false;
 
-  if(floz > warr[3] && warr[3] != 0) // replace when settling
+  if(floz > warr[3] && warr[3] != 0) // replace when settling/mid increase
     bFix = true;
   else
     memcpy(warr, warr+1, sizeof(warr) - sizeof(int32_t) );
@@ -392,14 +420,18 @@ void getWeight()
       wa.flOzAccum += flOzDiff; // settled more, erase last
     flOzDiff = floz - warr[1];
     if(flOzDiff > 0) // refill/increased
+    {
+      if(flOzDiff > 50) // using this for later
+        fullWt = weight;
       flOzDiff = 0;
+    }
     wa.flOzAccum -= flOzDiff; // difference from last weight
   }
 }
 
-
 void setup()
 {
+  media.init();
   prefs.init();
 
   ets_printf("Starting\r\n");
@@ -442,15 +474,41 @@ void setup()
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
+  server.on ( "/fm.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send ( 200, "text/html",  fileman);
+  });
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request){
     AsyncWebServerResponse *response = request->beginResponse_P(200, "image/x-icon", favicon, sizeof(favicon));
     response->addHeader("Content-Encoding", "gzip");
     request->send(response);
   });
 
+  server.on ( "/upload", HTTP_POST, [](AsyncWebServerRequest * request)
+  {
+    request->send( 200);
+    ws.textAll(settingsJson()); // update free space on completion
+  },
+  [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final)
+   {
+    if(!index)
+      request->_tempFile = media.createFile(filename);
+    if(len)
+     request->_tempFile.write((byte*)data, len);
+    if(final)
+      request->_tempFile.close();
+   }
+  );
+
+  server.on("/del-btn.png", HTTP_GET, [](AsyncWebServerRequest *request){
+    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/png", delbtn_png, sizeof(delbtn_png));
+    request->send(response);
+  });
+
   server.onNotFound([](AsyncWebServerRequest *request){
     request->send(404);
   });
+
+  server.serveStatic("/", INTERNAL_FS, "/");
 
   server.begin();
 
@@ -544,22 +602,23 @@ void loop()
       }
     }
 
-    if(hour_save != hour())
+    if(hour_save != localHour()) // cound't get away with GMT everywhere
     {
       static uint8_t lastDay;
 
-      hour_save = hour();
-      if((hour_save&1) == 0)
-        CallHost(Reason_Setup, "");
+      hour_save = localHour();
+      CallHost(Reason_Setup, "");
 
-      if(hour_save == 0)
+      if(hour_save == 0) // move accum into last day
         wa.newDay(lastDay);
 
-      lastDay = day();
-      wa.saveData();
+      wa.saveData(); // save hourly if changed
+
       prefs.update(); // update EEPROM if needed while we're at it (give user time to make many adjustments)
       if(hour_save == 2 && WiFi.status() == WL_CONNECTED)
         udpTime.start(); // update time daily at DST change
+
+      lastDay = day();
     }
 
     static uint8_t timer = 5;
