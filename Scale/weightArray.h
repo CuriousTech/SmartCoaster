@@ -36,6 +36,7 @@ public:
 protected:
   bool get(int &pidx, int n);
   void sendNew(uint32_t date, int32_t Value, AsyncWebSocket &ws, int WsClientID);
+  uint16_t getSum(void);
 
   weightArr m_log[LOG_CNT];
   int16_t m_idx;
