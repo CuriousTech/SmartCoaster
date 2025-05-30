@@ -2,8 +2,7 @@
 #include "Prefs.h"
 #include "jsonstring.h"
 #include <TimeLib.h>
-#include <FS.h>
-#include <FFat.h>
+#include "Media.h"
 
 extern void WsSend(String s);
 
@@ -11,7 +10,6 @@ const char fileName[] = "/dayTotal";
 
 void WeightArray::init()
 {
-  FFat.begin(true);
 }
 
 void WeightArray::saveData()
@@ -19,34 +17,34 @@ void WeightArray::saveData()
   if(year() < 2025) // time not set
     return;
 
-  File file;
   String sName = fileName;
   sName += year();
   sName += ".bin";
+
+  static uint16_t lastSum;
 
   static bool bLoaded = false; // save will be called when time changes
   if(bLoaded == false)  // load if not done yet
   {
     bLoaded = true;
-    file = FFat.open(sName, "r");
-  
-    if(!file)
-      return;
-
-    file.read((byte*)dayTotal, sizeof(dayTotal));
-    file.close();
+    media.loadFile(sName.c_str(), (uint8_t*)dayTotal, sizeof(dayTotal));
     flOzAccum = dayTotal[0]; // use day 0 for the current day accumulation
+    lastSum = getSum();
     return;
   }
 
-  file = FFat.open(sName, "w");
-
-  if(!file)
-    return;
-
   dayTotal[0] = flOzAccum;
-  file.write((byte*)dayTotal, sizeof(dayTotal));
-  file.close();
+  if(getSum() != lastSum)
+    media.saveFile(sName.c_str(), (uint8_t*)dayTotal, sizeof(dayTotal));
+  lastSum = getSum();
+}
+
+uint16_t WeightArray::getSum()
+{
+  uint16_t sum = 0;
+  for(uint8_t i = 0 ; i <= 31; i++)
+    sum += dayTotal[i];
+  return sum;
 }
 
 void WeightArray::newDay(int8_t day)
