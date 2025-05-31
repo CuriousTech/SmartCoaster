@@ -364,11 +364,6 @@ void WsSend(String s)
   ws.textAll(s);
 }
 
-uint8_t localHour()
-{
-  return hour() - (prefs.tzo / 60);
-}
-
 void alert(String txt)
 {
   jsonString js("alert");
@@ -586,12 +581,12 @@ void loop()
           bStarted = true;
           udpTime.start();
         }
-        if(WiFi.status() == WL_CONNECTED)
-          if(udpTime.check(0)) // get GMT time, no TZ
-          {
-          }
+        if(udpTime.check(0)) // get GMT time, no TZ
+        {
+        }
+        connectTimer = now();
       }
-      else if(now() - connectTimer > 10) // failed to connect for some reason
+      else if(now() - connectTimer > 10) // failed to connect or connection lost
       {
         ets_printf("Connect failed. Starting SmartConfig\r\n");
         connectTimer = now();
@@ -602,23 +597,16 @@ void loop()
       }
     }
 
-    if(hour_save != localHour()) // cound't get away with GMT everywhere
+    if(hour_save != hour())
     {
-      static uint8_t lastDay;
-
-      hour_save = localHour();
+      hour_save = hour();
       CallHost(Reason_Setup, "");
-
-      if(hour_save == 0) // move accum into last day
-        wa.newDay(lastDay);
 
       wa.saveData(); // save hourly if changed
 
       prefs.update(); // update EEPROM if needed while we're at it (give user time to make many adjustments)
-      if(hour_save == 2 && WiFi.status() == WL_CONNECTED)
+      if(wa.localHour() == 2 && WiFi.status() == WL_CONNECTED)
         udpTime.start(); // update time daily at DST change
-
-      lastDay = day();
     }
 
     static uint8_t timer = 5;
