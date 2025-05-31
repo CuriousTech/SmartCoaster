@@ -32,6 +32,8 @@ void WeightArray::saveData()
     lastSum = getSum();
     return;
   }
+  if(localHour() == 0)
+    newDay();
 
   dayTotal[0] = flOzAccum;
   if(getSum() != lastSum)
@@ -47,10 +49,20 @@ uint16_t WeightArray::getSum()
   return sum;
 }
 
-void WeightArray::newDay(int8_t day)
+uint8_t WeightArray::localHour()
 {
-  if(day == 0) return;
-  dayTotal[day] = flOzAccum;
+  return hour() - (prefs.tzo / 60);
+}
+
+void WeightArray::newDay()
+{
+  uint32_t ts = now(); // GMT time
+  ts -= prefs.tzo * 60; // local time
+  ts -= 60; // - a little for yesterday
+  tmElements_t tm;
+  breakTime(ts, tm);
+
+  dayTotal[tm.Day] = flOzAccum;
   flOzAccum = 0;
 }
 
