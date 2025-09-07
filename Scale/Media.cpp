@@ -83,8 +83,10 @@ bool Media::loadFile(const char *name, uint8_t *pData, uint32_t size)
   File file = INTERNAL_FS.open(name, "r");
   
   if(!file)
+  {
+    alert("File open failed");
     return false;
-
+  }
   file.read(pData, size);
   file.close();
   return true;
