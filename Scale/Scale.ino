@@ -27,8 +27,7 @@ SOFTWARE.
 // Partition: Default 4MB with ffat (use USB first, OTA doesn't create ffat partition)
 
 #include <ESPAsyncWebServer.h> // https://github.com/ESP32Async/ESPAsyncWebServer (3.7.2)
-#include <TimeLib.h> // https://github.com/PaulStoffregen/Time
-#include <UdpTime.h> // https://github.com/CuriousTech/ESP07_WiFiGarageDoor/tree/master/libraries/UdpTime
+#include <time.h>
 #include <JsonParse.h> //https://github.com/CuriousTech/ESP-HVAC/tree/master/Libraries/JsonParse
 #include <JsonClient.h> // https://github.com/CuriousTech/ESP-HVAC/tree/master/Libraries/JsonClient
 #include <HX711.h>  // https://github.com/bogde/HX711
@@ -42,6 +41,8 @@ SOFTWARE.
 #include "uriString.h"
 #include "WeightArray.h"
 #include "Media.h"
+
+#define TZ  "EST5EDT,M3.2.0,M11.1.0"  // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 
 const int LOADCELL_DOUT_PIN = 8;
 const int LOADCELL_SCK_PIN = 9;
@@ -70,12 +71,11 @@ void jsonPushCallback(int16_t iName, int iValue, char *psValue);
 JsonClient jsonPush(jsonPushCallback);
 
 Prefs prefs;
-UdpTime udpTime;
 HX711 loadcell;
+tm gLTime;
 
 bool bConfigDone = false;
 bool bStarted = false;
-uint32_t connectTimer;
 Media media;
 WeightArray wa;
 int32_t weight;
@@ -102,12 +102,11 @@ String dataJson()
 {
   jsonString js("state");
 
-  js.Var("t", (uint32_t)now());
+  js.Var("t", (uint32_t)time(nullptr) );
   js.Var("weight", weight );
   js.Var("wd", -flOzDiff);
   js.Var("fla", wa.flOzAccum);
-  int sig = WiFi.RSSI();
-  js.Var("rssi", sig);
+  js.Var("rssi", WiFi.RSSI());
   return js.Close();
 }
 
@@ -210,7 +209,6 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       WsSend(settingsJson()); // update disk free
       break;
    case 14: // tzo
-      if(!prefs.tzo) prefs.tzo = iValue; // trick to get TZ
       break;
   }
 }
@@ -445,7 +443,6 @@ void setup()
     ets_printf("No SSID. Waiting for EspTouch\r\n");
     WiFi.beginSmartConfig();
   }
-  connectTimer = now();
 
   // attach AsyncWebSocket
   ws.onEvent(onWsEvent);
@@ -527,7 +524,7 @@ void setup()
 
 void loop()
 {
-  static uint8_t hour_save, sec_save;
+  static uint8_t hour_save;
   static uint8_t cnt = 0;
   bool bNew;
 
@@ -542,16 +539,19 @@ void loop()
 
   checkQueue();
 
-  static uint32_t lastMS;
-  if(millis() - lastMS > prefs.displayRate)
+  static uint32_t dispMS;
+  if(millis() - dispMS > prefs.displayRate)
   {
-    lastMS = millis(); 
+    dispMS = millis(); 
     sendState();
   }
 
-  if(sec_save != second()) // only do stuff once per second (loop is maybe 20-30 Hz)
+  static uint32_t lastMS;
+  if(millis() - lastMS >= 1000) // only do stuff once per second
   {
-    sec_save = second();
+    lastMS = millis();
+
+    getLocalTime(&gLTime); // used globally
 
     getWeight();
 
@@ -561,7 +561,6 @@ void loop()
       {
         ets_printf("SmartConfig set\r\n");
         bConfigDone = true;
-        connectTimer = now();
         WiFi.SSID().toCharArray(prefs.szSSID, sizeof(prefs.szSSID)); // Get the SSID from SmartConfig or last used
         WiFi.psk().toCharArray(prefs.szSSIDPassword, sizeof(prefs.szSSIDPassword) );
         prefs.update();
@@ -577,19 +576,16 @@ void loop()
           WiFi.mode(WIFI_STA);
           MDNS.begin( prefs.szName );
           MDNS.addService("sensors", "tcp", serverPort);
-          CallHost(Reason_Setup, "");
           bStarted = true;
-          udpTime.start();
+          configTime(0, 0, "pool.ntp.org");
+          setenv("TZ", TZ, 1);
+          tzset();
+          CallHost(Reason_Setup, "");
         }
-        if(udpTime.check(0)) // get GMT time, no TZ
-        {
-        }
-        connectTimer = now();
       }
-      else if(now() - connectTimer > 10) // failed to connect or connection lost
+      else if(WiFi.status() == WL_CONNECT_FAILED) // failed to connect or connection lost
       {
         ets_printf("Connect failed. Starting SmartConfig\r\n");
-        connectTimer = now();
         WiFi.mode(WIFI_AP_STA);
         WiFi.beginSmartConfig();
         bConfigDone = false;
@@ -597,16 +593,20 @@ void loop()
       }
     }
 
-    if(hour_save != hour())
+    if(hour_save != gLTime.tm_hour)
     {
-      hour_save = hour();
+      hour_save = gLTime.tm_hour;
       CallHost(Reason_Setup, "");
 
       wa.saveData(); // save hourly if changed
 
       prefs.update(); // update EEPROM if needed while we're at it (give user time to make many adjustments)
-      if(wa.localHour() == 2 && WiFi.status() == WL_CONNECTED)
-        udpTime.start(); // update time daily at DST change
+      if(gLTime.tm_hour == 2)
+      {
+        configTime(0, 0, "pool.ntp.org");
+        setenv("TZ", TZ, 1);
+        tzset();
+      }
     }
 
     static uint8_t timer = 5;
@@ -620,7 +620,7 @@ void loop()
     if(--addTimer == 0)
     {
       addTimer = prefs.logRate;
-      wa.add( (uint32_t)now(), weight, ws, WsClientID);
+      wa.add( (uint32_t)time(nullptr), weight, ws, WsClientID);
     }
   }
 }
