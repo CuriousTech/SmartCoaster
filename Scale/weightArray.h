@@ -28,7 +28,6 @@ public:
   void init(void);
   void saveData(void);
   void newDay(void);
-  uint8_t localHour(void);
   void add(uint32_t date, int32_t value, AsyncWebSocket &ws, int WsClientID);
   void historyDump(bool bStart, AsyncWebSocket &ws, int WsClientID);
 
