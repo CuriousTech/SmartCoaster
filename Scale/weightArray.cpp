@@ -1,9 +1,10 @@
+#include <time.h>
 #include "weightArray.h"
 #include "Prefs.h"
 #include "jsonstring.h"
-#include <TimeLib.h>
 #include "Media.h"
 
+extern tm gLTime;
 extern void WsSend(String s);
 
 const char fileName[] = "/dayTotal";
@@ -14,11 +15,11 @@ void WeightArray::init()
 
 void WeightArray::saveData()
 {
-  if(year() < 2025) // time not set
+  if(gLTime.tm_year < 125) // time not set
     return;
 
   String sName = fileName;
-  sName += year();
+  sName += gLTime.tm_year + 1900;
   sName += ".bin";
 
   static uint16_t lastSum;
@@ -32,7 +33,7 @@ void WeightArray::saveData()
     lastSum = getSum();
     return;
   }
-  if(localHour() == 0)
+  if(gLTime.tm_hour == 0)
     newDay();
 
   dayTotal[0] = flOzAccum;
@@ -49,20 +50,12 @@ uint16_t WeightArray::getSum()
   return sum;
 }
 
-uint8_t WeightArray::localHour()
-{
-  return hour() - (prefs.tzo / 60);
-}
-
 void WeightArray::newDay()
 {
-  uint32_t ts = now(); // GMT time
-  ts -= prefs.tzo * 60; // local time
-  ts -= 60; // - a little for yesterday
-  tmElements_t tm;
-  breakTime(ts, tm);
-
-  dayTotal[tm.Day] = flOzAccum;
+  time_t ts = time(nullptr); // GMT time
+  ts -= 60 * 60 * 12; // some time yesterday
+  tm *tm2 = gmtime(&ts);
+  dayTotal[tm2->tm_mday] = flOzAccum;
   flOzAccum = 0;
 }
 
