@@ -26,8 +26,7 @@ public:
   float     fCal = 0.477f;
   int16_t   calWt = 50; // default 50g calibration weight
   int16_t   emptyWt = 200; // grams
-  uint16_t  tzo; // timezone offset
-  uint8_t   res[28];
+  uint8_t   res[30];
   uint8_t   end;
 private:
   uint16_t Fletcher16( uint8_t* data, int count);
